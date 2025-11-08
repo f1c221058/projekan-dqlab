@@ -1,76 +1,54 @@
 import pandas as pd
-from datetime import datetime
 import re
 
-def normalize_tanggal_transaksi(input_xlsx_path: str, output_xlsx_path: str) -> None:
+def normalize_tanggal_transaksi(input_xlsx_path: str, output_csv_path: str) -> None:
     # Baca file Excel
-    df = pd.read_excel(input_xlsx_path, sheet_name='transaksi')
+    df = pd.read_excel(input_xlsx_path, dtype=str)
 
-    def parse_date(date_str):
-        if pd.isna(date_str):
-            return date_str
-        
-        date_str = str(date_str).strip()
+    # Peta bulan Indonesia ke Inggris
+    bulan_map = {
+        'januari': 'January', 'jan': 'January',
+        'februari': 'February', 'feb': 'February',
+        'maret': 'March', 'mar': 'March',
+        'april': 'April', 'apr': 'April',
+        'mei': 'May', 'mei.': 'May',
+        'juni': 'June', 'jun': 'June',
+        'juli': 'July', 'jul': 'July',
+        'agustus': 'August', 'agu': 'August', 'aug': 'August',
+        'september': 'September', 'sep': 'September',
+        'oktober': 'October', 'okt': 'October', 'oct': 'October',
+        'november': 'November', 'nov': 'November',
+        'desember': 'December', 'des': 'December', 'dec': 'December'
+    }
 
-        # Hapus tanda kutip atau koma
-        date_str = date_str.replace("‘", "'").replace("’", "'").replace(",", " ").replace(".", " ")
-        date_str = re.sub(r"\s+", " ", date_str).strip()
+    def parse_date(s):
+        if pd.isna(s):
+            return s
+        s = str(s).strip()
+        s = re.sub(r"[,'’‘]", " ", s)
+        s = re.sub(r"\s+", " ", s)
+        s = " ".join([bulan_map.get(w.lower(), w) for w in s.split()])
 
-        # Ubah bulan bahasa Indonesia → Inggris
-        bulan_map = {
-            "januari": "January", "jan": "Jan",
-            "februari": "February", "feb": "Feb",
-            "maret": "March", "mar": "Mar",
-            "april": "April", "apr": "Apr",
-            "mei": "May",
-            "juni": "June", "jun": "Jun",
-            "juli": "July", "jul": "Jul",
-            "agustus": "August", "agu": "Aug",
-            "september": "September", "sep": "Sep",
-            "oktober": "October", "okt": "Oct",
-            "november": "November", "nov": "Nov",
-            "desember": "December", "des": "Dec"
-        }
+        # Coba parse otomatis
+        for dayfirst in (True, False):
+            dt = pd.to_datetime(s, errors='coerce', dayfirst=dayfirst, infer_datetime_format=True)
+            if pd.notna(dt):
+                return dt.strftime("%d-%m-%Y")
+        return s  # kembalikan jika tidak bisa diparse
 
-        for indo, eng in bulan_map.items():
-            pattern = re.compile(rf"\b{indo}\b", re.IGNORECASE)
-            date_str = pattern.sub(eng, date_str)
+    # Deteksi kolom tanggal otomatis berdasarkan sample
+    for col in df.columns:
+        sample = df[col].dropna().astype(str).head(10)
+        detect = pd.to_datetime(sample, errors='coerce', dayfirst=True, infer_datetime_format=True)
+        if detect.notna().sum() >= 3:
+            df[col] = df[col].apply(parse_date)
 
-        # Deteksi tahun dua digit dengan tanda kutip ('24 → 2024)
-        if re.search(r"'\d{2}", date_str):
-            date_str = re.sub(r"'(\d{2})", lambda m: "20" + m.group(1), date_str)
+    # Simpan hasil
+    df.to_csv(output_csv_path, index=False)
+    print(f"✅ File berhasil dinormalisasi dan disimpan ke: {output_csv_path}")
 
-        # Format tanggal yang mungkin
-        possible_formats = [
-            "%d %B %Y", "%d %b %Y", "%Y-%m-%d", "%d-%m-%Y",
-            "%Y %d %B", "%Y %d %b", "%Y, %d %B", "%Y, %d %b",
-            "%d %B", "%d %b %Y", "%d %B '%y", "%d %b '%y"
-        ]
-
-        for fmt in possible_formats:
-            try:
-                parsed = datetime.strptime(date_str, fmt)
-                return parsed.strftime("%d-%m-%Y")
-            except ValueError:
-                continue
-
-        # Coba gunakan pandas untuk format yang tidak terduga
-        try:
-            parsed = pd.to_datetime(date_str, errors='coerce', dayfirst=True)
-            if pd.notna(parsed):
-                return parsed.strftime("%d-%m-%Y")
-        except Exception:
-            pass
-
-        # Jika gagal total
-        return date_str
-
-    # Terapkan ke kolom tanggal transaksi
-    df['tanggal transaksi'] = df['tanggal transaksi'].apply(parse_date)
-
-    # Simpan kembali ke Excel dengan urutan kolom tetap
-    df.to_excel(output_xlsx_path, index=False)
-
-# Contoh penggunaan:
-# normalize_tanggal_transaksi("penjualan_dqmart_01.xlsx", "penjualan_dqmart_01_output.xlsx")
-
+# Jalankan fungsi
+normalize_tanggal_transaksi(
+    "penjualan_dqmart_01-beta.xlsx",
+    "penjualan_dqmart_01-beta_normalized.csv"
+)
