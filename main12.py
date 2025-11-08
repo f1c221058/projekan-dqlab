@@ -72,5 +72,5 @@ def normalize_tanggal_transaksi(input_xlsx_path: str, output_xlsx_path: str) -> 
     df.to_excel(output_xlsx_path, index=False)
 
 # Contoh penggunaan:
-# normalize_tanggal_transaksi("penjualan_dqmart_01.xlsx", "penjualan_dqmart_01_output.xlsx")
+normalize_tanggal_transaksi("penjualan_dqmart_01.xlsx", "penjualan_dqmart_01_output.xlsx")
 
