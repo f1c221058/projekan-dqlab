@@ -1,46 +1,43 @@
+# apriori_hackathon.py
 import pandas as pd
 from mlxtend.frequent_patterns import apriori, association_rules
 
+
 def run_analysis(input_xlsx_path: str, output_xlsx_path: str) -> None:
-    # Baca data transaksi
+    # 1. Baca data
     df = pd.read_excel(input_xlsx_path, sheet_name="Transaksi")
-    df.columns = df.columns.str.strip().str.lower()
+    df = df.rename(columns=lambda x: x.strip().lower())
+    df = df.rename(columns={"kode transaksi": "Kode Transaksi", "nama produk": "Nama Produk"})
+    df = df[["Kode Transaksi", "Nama Produk"]].dropna().drop_duplicates()
+    df["Nama Produk"] = df["Nama Produk"].astype(str).str.strip()
 
-    # Cek kolom
-    if not {'kode transaksi', 'nama produk', 'jumlah'}.issubset(df.columns):
-        raise ValueError("Kolom wajib: 'Kode Transaksi', 'Nama Produk', dan 'Jumlah'.")
+    # 2. Buat basket (0/1)
+    basket = pd.crosstab(df["Kode Transaksi"], df["Nama Produk"]).astype(bool).astype(int)
 
-    # Ubah jadi format basket (produk dibeli = 1)
-    basket = (df
-        .pivot_table(index='kode transaksi', columns='nama produk', values='jumlah', fill_value=0)
-        .gt(0).astype(int)
+    # 3. Jalankan Apriori + Association Rules
+    itemsets = apriori(basket, min_support=0.05, use_colnames=True)
+    rules = association_rules(itemsets, metric="confidence", min_threshold=0.4)
+
+    if rules.empty:
+        print("Tidak ada kombinasi yang memenuhi kriteria.")
+        return
+
+    # 4. Gabungkan antecedents dan consequents
+    rules["union_set"] = rules.apply(lambda r: frozenset(r["antecedents"].union(r["consequents"])), axis=1)
+    grouped = (
+        rules.groupby(rules["union_set"])
+        .agg(Maximum_Lift=("lift", "max"), Maximum_Confidence=("confidence", "max"))
+        .reset_index()
     )
 
-    # Apriori + association rules
-    rules = association_rules(
-        apriori(basket, min_support=0.05, use_colnames=True),
-        metric="confidence", min_threshold=0.4
-    )
+    # 5. Format output
+    grouped["Products"] = grouped["union_set"].apply(lambda x: ";".join(sorted(x)))
+    grouped = grouped[["Products", "Maximum_Lift", "Maximum_Confidence"]]
+    grouped = grouped.sort_values(by=["Maximum_Lift", "Maximum_Confidence"], ascending=[False, False])
+    grouped.insert(0, "Packaging Set ID", range(1, len(grouped) + 1))
+    grouped.to_excel(output_xlsx_path, sheet_name = 'Packaging', index=False)
+    print(f"[OK] Hasil disimpan ke: {output_xlsx_path}")
 
-    # Gabungkan antecedent + consequent → kombinasi produk unik
-    rules['Products'] = rules.apply(
-        lambda r: ';'.join(sorted(set(r['antecedents']) | set(r['consequents']))),
-        axis=1
-    )
 
-    # Ambil kombinasi unik dengan lift & confidence maksimum
-    result = (rules.groupby('Products', as_index=False)
-        .agg(Maximum_Lift=('lift', 'max'), Maximum_Confidence=('confidence', 'max'))
-        .sort_values(['Maximum_Lift', 'Maximum_Confidence'], ascending=[False, False])
-        .reset_index(drop=True)
-    )
-
-    # Tambahkan Packaging Set ID
-    result.insert(0, 'Packaging Set ID', range(1, len(result) + 1))
-
-    # Simpan ke Excel
-    result.to_excel(output_xlsx_path, sheet_name="Packaging", index=False)
-
-if __name__ == "__main__":
-
-  run_analysis("transaksi_dqmart.xlsx", "product_packaging.xlsx")
+# Contoh pemanggilan langsung:
+run_analysis("transaksi_dqmart.xlsx", "product_packaging.xlsx")
