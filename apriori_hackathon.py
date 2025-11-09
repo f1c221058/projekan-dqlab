@@ -42,4 +42,5 @@ def run_analysis(input_xlsx_path: str, output_xlsx_path: str) -> None:
     result.to_excel(output_xlsx_path, sheet_name="Packaging", index=False)
 
 if __name__ == "__main__":
-    run_analysis("transaksi_dqmart.xlsx","product_packaging.xlsx")
+
+  run_analysis("transaksi_dqmart.xlsx", "product_packaging.xlsx")
